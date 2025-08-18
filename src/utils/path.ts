@@ -47,9 +47,9 @@ export default class PathUtils {
         return res;
     }
 
-    public static async findMostFreePath(storagePaths: StoragePath[]): Promise<FileSystemInfo | null> {
+    public static async findMostFreePath(storagePaths: StoragePath[]): Promise<FileSystemInfo | undefined> {
         if (storagePaths.length === 0) {
-            return null;
+            return undefined;
         }
         
         const analyzedPaths = await this.analyzeStoragePaths(storagePaths);

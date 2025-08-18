@@ -7,14 +7,14 @@ import { pipeline } from 'stream/promises';
 import { join } from 'path';
 
 export default class DownloadUtils {
-    public static async stream(url: string, destination: string, headers?: NodeHttpHeader): Promise<void> {
+    public static async stream(url: string, destination: string, fragmentId: string, headers?: NodeHttpHeader): Promise<string> {
         try {
             const downloadStream = got.stream(url, { headers });
-            const fileName = url.split('/').pop() || 'downloaded-file';
-            const fullDestination = join(destination, fileName);
+            const fullDestination = join(destination, fragmentId);
             const fileWriteStream = createWriteStream(fullDestination);
             
             await pipeline(downloadStream, fileWriteStream);
+            return fullDestination;
         } catch (error) {
             // Clean up - delete the partial file if download fails
             try {
@@ -27,9 +27,9 @@ export default class DownloadUtils {
         }
     }
 
-    public static async head(url: string): Promise<IncomingHttpHeaders> {
+    public static async head(url: string, headers?: NodeHttpHeader): Promise<IncomingHttpHeaders> {
         try {
-            const response = await got.head(url);
+            const response = await got.head(url, { headers });
             return response.headers;
         } catch (error) {
             throw new Error(`Failed to get headers from ${url}: ${(error as Error).message}`);
