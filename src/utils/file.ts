@@ -3,17 +3,14 @@ import { createHash } from 'blake2';
 import { FileHash } from '../types';
 
 export default class FileUtils {
-    public static hashFile(filePath: string): FileHash {
+    public static hashFile(filePath: string): string {
         const fileData = fs.readFileSync(filePath);
         const h = createHash('blake2b', { digestLength: 32 });
         h.update(fileData);
-        return {
-            path: filePath,
-            hash: h.digest('hex')
-        };
+        return h.digest('hex');
     }
 
-    public static hashFiles(filePaths: string[]): FileHash[] {
+    public static hashFiles(filePaths: string[]): string[] {
         return filePaths.map(filePath => this.hashFile(filePath));
     }
 

@@ -11,6 +11,8 @@
   "dependencies": {
     "@types/blake2": "^4.0.4",
     "@types/got": "^9.6.12",
+    "blake2": "^5.0.0",
+    "got": "^14.4.7",
     "socket.io-client": "^4.8.1",
     "systeminformation": "^5.27.7"
   },

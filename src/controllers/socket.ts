@@ -1,15 +1,17 @@
 import { io, Socket } from 'socket.io-client';
 import SettingUtils from '../utils/setting';
 import SignalSocketController from './signalSocket';
+import CommandSocketController from './commandSocket';
 
 export default class SocketController {
     private socket!: Socket;
     private serverIndex: number = 0;
     private maxServerIndex: number = 0;
     private signalSocketController!: SignalSocketController;
+    private commandSocketController!: CommandSocketController;
 
     constructor() {
-        console.log(SettingUtils.getRemotePaths());
+        
     }
 
     public createConnection(): void {
@@ -24,6 +26,7 @@ export default class SocketController {
             path: '/socket.io'
         });
         this.signalSocketController = new SignalSocketController(this.socket);
+        this.commandSocketController = new CommandSocketController(this.socket);
         this.serverIndex = 0;
         this.maxServerIndex = servers.length - 1;
         this.socket.on('connect_error', this.handleConnectError);

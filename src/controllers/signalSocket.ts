@@ -3,7 +3,7 @@ import { NodeBaseInfo, AckFromServer } from '../../../types/signal';
 import { AppInfo, StoragePath } from '../types';
 import { NodeDeviceUpdate } from '../../../types/signal';
 import SystemUtils from '../utils/system';
-import * as NODE from '../../../config/socket-event-node';
+import * as NODE from '../../../config/signal.socket.event.node';
 import SettingUtils from '../utils/setting';
 
 export default class SignalSocketController {

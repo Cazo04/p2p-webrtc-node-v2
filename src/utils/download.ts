@@ -7,12 +7,12 @@ import { pipeline } from 'stream/promises';
 import { join } from 'path';
 
 export default class DownloadUtils {
-    public static async stream(url: string, destination: string, fragmentId: string, headers?: NodeHttpHeader): Promise<string> {
+    public static async stream(url: string, destination: string, fileName: string, headers?: NodeHttpHeader): Promise<string> {
         try {
             const downloadStream = got.stream(url, { headers });
-            const fullDestination = join(destination, fragmentId);
+            const fullDestination = join(destination, fileName);
             const fileWriteStream = createWriteStream(fullDestination);
-            
+
             await pipeline(downloadStream, fileWriteStream);
             return fullDestination;
         } catch (error) {
@@ -22,7 +22,7 @@ export default class DownloadUtils {
             } catch {
                 // Ignore errors if deletion fails
             }
-            
+
             throw new Error(`Failed to download from ${url} to ${destination}: ${(error as Error).message}`);
         }
     }

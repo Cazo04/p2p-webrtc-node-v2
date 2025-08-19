@@ -138,31 +138,36 @@ export default class SettingUtils {
 
         for (const remotePath of remotePaths) {
             try {
-            if (!fs.existsSync(remotePath.path)) {
-                throw new Error(`Remote path does not exist: ${remotePath.path}`);
-            }
-            
-            const files = fs.readdirSync(remotePath.path);
-            for (const file of files) {
-                const filePath = path.join(remotePath.path, file);
-                
-                try {
-                const stat = fs.statSync(filePath);
-                
-                if (stat.isFile()) {
-                    SettingUtils.fragmentMap.set(file, filePath);
+                if (!fs.existsSync(remotePath.path)) {
+                    throw new Error(`Remote path does not exist: ${remotePath.path}`);
                 }
-                } catch (err) {
-                throw new Error(`Error processing file ${filePath}: ${err}`);
+
+                const files = fs.readdirSync(remotePath.path);
+                for (const file of files) {
+                    const filePath = path.join(remotePath.path, file);
+
+                    try {
+                        const stat = fs.statSync(filePath);
+
+                        if (stat.isFile()) {
+                            SettingUtils.fragmentMap.set(file, filePath);
+                            console.log(`Fragment path added: ${file}`);
+                        }
+                    } catch (err) {
+                        throw new Error(`Error processing file ${filePath}: ${err}`);
+                    }
                 }
-            }
             } catch (err) {
-            throw new Error(`Error reading directory ${remotePath.path}: ${err}`);
+                throw new Error(`Error reading directory ${remotePath.path}: ${err}`);
             }
         }
     }
 
     public static getFragmentPath(fragmentId: string): string | undefined {
         return SettingUtils.fragmentMap.get(fragmentId);
+    }
+
+    public static addFragmentPath(fragmentId: string, filePath: string): void {
+        SettingUtils.fragmentMap.set(fragmentId, filePath);
     }
 }
