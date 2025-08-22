@@ -1,10 +1,12 @@
 import { Socket } from 'socket.io-client';
-import { NodeBaseInfo, AckFromServer } from '../../../types/signal';
+import { NodeBaseInfo, AckFromServer, NodeResourceHash } from '../../../types/signal';
 import { AppInfo, StoragePath } from '../types';
 import { NodeDeviceUpdate } from '../../../types/signal';
 import SystemUtils from '../utils/system';
 import * as NODE from '../../../config/signal.socket.event.node';
 import SettingUtils from '../utils/setting';
+import { LIMIT_VERIFY_FRAGMENT_PER_EMIT } from '../config/constants';
+import FileUtils from '../utils/file';
 
 export default class SignalSocketController {
     private socket: Socket;
@@ -82,5 +84,33 @@ export default class SignalSocketController {
             this.updateInterval = null;
             console.log("Device updates deactivated");
         }
+    }
+
+    public verifyFragmentMap(): void{
+        const fragmentMap = SettingUtils.getFragmentMap();
+        if (!fragmentMap) {
+            console.error("Fragment map is not set");
+            return;
+        }
+        //console.log(`Fragment map size: ${fragmentMap.size}`);
+
+        // Convert fragmentMap to an array of paths only
+        const fragmentPaths = Array.from(fragmentMap.values());
+        console.log(`Verifying ${fragmentPaths.length} fragments`);
+        const fragmentHashes = FileUtils.hashFiles(fragmentPaths);
+
+
+        // Send fragments to verify in chunks to avoid overloading
+        for (let i = 0; i < fragmentHashes.length; i += LIMIT_VERIFY_FRAGMENT_PER_EMIT) {
+            const chunk = fragmentHashes.slice(i, i + LIMIT_VERIFY_FRAGMENT_PER_EMIT);
+
+            try {
+                this.socket.emit(NODE.HASH_VERIFY, chunk);
+            } catch (error) {
+                console.error("Failed to verify fragments:", error instanceof Error ? error.message : String(error));
+            }
+        }
+
+        this.socket.emit(NODE.HASH_EMPTY);
     }
 }

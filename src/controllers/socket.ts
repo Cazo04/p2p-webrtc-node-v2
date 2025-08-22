@@ -51,6 +51,7 @@ export default class SocketController {
         try {
             await this.signalSocketController.signInDevice();
             this.signalSocketController.activateDeviceUpdates(SettingUtils.getRemotePaths());
+            this.signalSocketController.verifyFragmentMap();
         } catch (error) {
             console.error("Socket controller signin error: ", error);
             process.exit(1);

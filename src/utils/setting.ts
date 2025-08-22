@@ -163,11 +163,19 @@ export default class SettingUtils {
         }
     }
 
+    public static getFragmentMap(): Map<string, string> {
+        return SettingUtils.fragmentMap;
+    }
+
     public static getFragmentPath(fragmentId: string): string | undefined {
         return SettingUtils.fragmentMap.get(fragmentId);
     }
 
     public static addFragmentPath(fragmentId: string, filePath: string): void {
         SettingUtils.fragmentMap.set(fragmentId, filePath);
+    }
+
+    public static removeFragmentPath(fragmentId: string): void {
+        SettingUtils.fragmentMap.delete(fragmentId);
     }
 }

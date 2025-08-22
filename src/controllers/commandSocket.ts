@@ -1,6 +1,6 @@
 import { Socket } from 'socket.io-client';
 import { COMMAND, COMMAND_VERIFY } from '../../../config/signal.socket.event.node';
-import { NodeCommand, FragmentDownloadInfo, NodeCommandVerify, NodeDownloadResult } from '../../../types/signal';
+import { NodeCommand, NodeCommandVerify, NodeResourceHash } from '../../../types/signal';
 import { NodeHttpHeader } from '../../../types/resource';
 import SettingUtils from '../utils/setting';
 import FileUtils from '../utils/file';
@@ -34,6 +34,7 @@ export default class CommandSocketController {
             const path = SettingUtils.getFragmentPath(fragmentId);
             if (path) {
                 paths.push(path);
+                SettingUtils.removeFragmentPath(fragmentId);
             } else {
                 console.warn("Delete fragment path not found:", fragmentId);
             }
@@ -52,7 +53,7 @@ export default class CommandSocketController {
             "Node-Id": appInfo.id,
             "Node-Token": appInfo.auth_token
         };
-        let downloadResults: NodeDownloadResult[] = [];
+        let downloadResults: NodeResourceHash[] = [];
 
         for (const url of urls) {
             try {
@@ -85,7 +86,7 @@ export default class CommandSocketController {
                     const fileHash = FileUtils.hashFile(filePath);
                     downloadResults.push({
                         fragment_id: fileName,
-                        hash: fileHash
+                        hash: fileHash || ''
                     });
                 }
             } catch (error) {

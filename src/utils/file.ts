@@ -1,17 +1,26 @@
 import * as fs from 'fs';
 import { createHash } from 'blake2';
-import { FileHash } from '../types';
+import { FragmentHash } from '../types';
+const path = require('path');
 
 export default class FileUtils {
-    public static hashFile(filePath: string): string {
-        const fileData = fs.readFileSync(filePath);
-        const h = createHash('blake2b', { digestLength: 32 });
-        h.update(fileData);
-        return h.digest('hex');
+    public static hashFile(filePath: string): string | undefined {
+        try {
+            const fileData = fs.readFileSync(filePath);
+            const h = createHash('blake2b', { digestLength: 32 });
+            h.update(fileData);
+            return h.digest('hex');
+        } catch (error) {
+            console.error(`Error hashing file ${filePath}:`, error);
+            return undefined;
+        }
     }
 
-    public static hashFiles(filePaths: string[]): string[] {
-        return filePaths.map(filePath => this.hashFile(filePath));
+    public static hashFiles(filePaths: string[]): FragmentHash[] {
+        return filePaths.map(filePath => ({
+            fragment_id: path.basename(filePath),
+            hash: this.hashFile(filePath)
+        }));
     }
 
     public static deleteFile(filePath: string): void {

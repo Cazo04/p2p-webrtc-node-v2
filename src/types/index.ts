@@ -36,6 +36,11 @@ export interface FileSystemInfo {
     availableSpace: number
 }
 
+export interface FragmentHash {
+    fragment_id: string
+    hash?: string
+}
+
 export interface SystemInfo {
     cpu_usage: number
     ram_available: number
