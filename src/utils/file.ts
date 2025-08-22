@@ -1,6 +1,6 @@
 import * as fs from 'fs';
 import { createHash } from 'blake2';
-import { FragmentHash } from '../types';
+import { NodeResourceHash } from '../../../types/signal';
 const path = require('path');
 
 export default class FileUtils {
@@ -16,10 +16,10 @@ export default class FileUtils {
         }
     }
 
-    public static hashFiles(filePaths: string[]): FragmentHash[] {
+    public static hashFiles(filePaths: string[]): NodeResourceHash[] {
         return filePaths.map(filePath => ({
             fragment_id: path.basename(filePath),
-            hash: this.hashFile(filePath)
+            hash: this.hashFile(filePath) || ''
         }));
     }
 

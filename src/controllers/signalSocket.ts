@@ -1,5 +1,5 @@
 import { Socket } from 'socket.io-client';
-import { NodeBaseInfo, AckFromServer, NodeResourceHash } from '../../../types/signal';
+import { NodeBaseInfo, AckFromServer, NodeResourcesVerify } from '../../../types/signal';
 import { AppInfo, StoragePath } from '../types';
 import { NodeDeviceUpdate } from '../../../types/signal';
 import SystemUtils from '../utils/system';
@@ -21,6 +21,7 @@ export default class SignalSocketController {
             if (res && res.success && res.data) {
                 console.log("Device signed up successfully with ID:", res.data.id);
                 SettingUtils.setAppInfo(res.data);
+                SettingUtils.saveSettings();
                 return res.data as AppInfo;
             } else {
                 throw new Error(`Failed to sign up device: ${res?.error || 'Response is invalid'}`);
@@ -67,12 +68,12 @@ export default class SignalSocketController {
     public activateDeviceUpdates(storagePaths: StoragePath[]): void {
         // Clear any existing interval first
         this.deactivateDeviceUpdates();
-        
+
         // Start a new interval to update device info every 5 seconds
         this.updateInterval = setInterval(() => {
             this.updateDevice(storagePaths);
         }, 5000);
-        
+
         // Send initial update immediately
         this.updateDevice(storagePaths);
         console.log("Device updates activated, sending updates every 5 seconds");
@@ -86,7 +87,7 @@ export default class SignalSocketController {
         }
     }
 
-    public verifyFragmentMap(): void{
+    public verifyFragmentMap(): void {
         const fragmentMap = SettingUtils.getFragmentMap();
         if (!fragmentMap) {
             console.error("Fragment map is not set");
@@ -97,20 +98,27 @@ export default class SignalSocketController {
         // Convert fragmentMap to an array of paths only
         const fragmentPaths = Array.from(fragmentMap.values());
         console.log(`Verifying ${fragmentPaths.length} fragments`);
+        if (fragmentPaths.length === 0) {
+            this.socket.emit(NODE.HASH_EMPTY);
+            return;
+        }
         const fragmentHashes = FileUtils.hashFiles(fragmentPaths);
 
-
+        const totalChunk = Math.ceil(fragmentHashes.length / LIMIT_VERIFY_FRAGMENT_PER_EMIT);
         // Send fragments to verify in chunks to avoid overloading
         for (let i = 0; i < fragmentHashes.length; i += LIMIT_VERIFY_FRAGMENT_PER_EMIT) {
             const chunk = fragmentHashes.slice(i, i + LIMIT_VERIFY_FRAGMENT_PER_EMIT);
 
+            const send: NodeResourcesVerify = {
+                index: i,
+                total: totalChunk,
+                resources: chunk
+            };
             try {
-                this.socket.emit(NODE.HASH_VERIFY, chunk);
+                this.socket.emit(NODE.HASH_VERIFY, send);
             } catch (error) {
                 console.error("Failed to verify fragments:", error instanceof Error ? error.message : String(error));
             }
         }
-
-        this.socket.emit(NODE.HASH_EMPTY);
     }
 }
