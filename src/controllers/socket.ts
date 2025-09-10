@@ -2,6 +2,7 @@ import { io, Socket } from 'socket.io-client';
 import SettingUtils from '../utils/setting';
 import SignalSocketController from './signalSocket';
 import CommandSocketController from './commandSocket';
+import WebRTCSocketController from './webRTCSocket';
 
 export default class SocketController {
     private socket!: Socket;
@@ -9,6 +10,7 @@ export default class SocketController {
     private maxServerIndex: number = 0;
     private signalSocketController!: SignalSocketController;
     private commandSocketController!: CommandSocketController;
+    private webrtcSocketController!: WebRTCSocketController;
 
     constructor() {
         
@@ -27,6 +29,7 @@ export default class SocketController {
         });
         this.signalSocketController = new SignalSocketController(this.socket);
         this.commandSocketController = new CommandSocketController(this.socket);
+        this.webrtcSocketController = new WebRTCSocketController(this.socket);
         this.serverIndex = 0;
         this.maxServerIndex = servers.length - 1;
         this.socket.on('connect_error', this.handleConnectError);
