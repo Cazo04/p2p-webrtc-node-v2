@@ -1,9 +1,13 @@
 import { Socket } from 'socket.io-client';
 import { DataChannelMessageType } from '../../../config/signal.socket.event.webrtc';
 import * as RTC from '../../../config/signal.socket.event.webrtc';
-import type { WebRTCAnswer, WebRTCOffer, WebRTCIceCandidate, RequestNodeMessage } from '../../../types/signal';
+import type { WebRTCAnswer, WebRTCOffer, WebRTCIceCandidate, RequestNodeMessage, CanceledMessage, PeerStats } from '../../../types/signal';
 import SettingUtils from '../utils/setting';
 import { RTCSessionDescription, RTCIceCandidate, RTCPeerConnection, RTCDataChannel } from '@roamhq/wrtc';
+import { CHUNK_SIZE } from '../config/constants';
+import * as fs from 'fs';
+import * as si from 'systeminformation';
+import NetworkUtils from '../utils/network';
 
 
 // WebRTC Configuration
@@ -27,6 +31,10 @@ interface TransferSession {
     status: 'in-progress' | 'completed' | 'failed' | 'canceled';
     error?: string;
     speedBytesPerSec?: number;
+    totalBytes?: number;
+    sentBytes?: number;
+    fileStream?: fs.ReadStream;
+    canceled?: boolean;
 }
 
 interface PeerConnectionData {
@@ -35,6 +43,7 @@ interface PeerConnectionData {
     lastActivity: number;
     timeoutId?: NodeJS.Timeout;
     transferSessions?: Map<string, TransferSession>;
+    stats?: PeerStats;
 }
 
 export default class WebRTCSocketController {
@@ -165,6 +174,8 @@ export default class WebRTCSocketController {
             }
         };
 
+        const intervalId = setInterval(async () => await this.sendPeerStatsToServer(peerConnection, remoteId), 1000);
+
         // Handle connection state changes
         peerConnection.onconnectionstatechange = () => {
             console.log(`[WebRTC] Connection state with ${remoteId}: ${peerConnection.connectionState}`);
@@ -175,6 +186,8 @@ export default class WebRTCSocketController {
                 peerConnection.connectionState === 'disconnected' ||
                 peerConnection.connectionState === 'closed') {
                 this.cleanupPeerConnection(remoteId);
+                clearInterval(intervalId);
+                this.sendPeerStatsToServer(peerConnection, remoteId, true);
             }
         };
 
@@ -192,6 +205,61 @@ export default class WebRTCSocketController {
         // peerData.dataChannel = dataChannel;
 
         return peerData;
+    }
+
+    private async sendPeerStatsToServer(peerConnection: RTCPeerConnection, remoteId: string, isDisconnected = false) {
+        try {
+            let peerStats: PeerStats = {
+                target: remoteId,
+                isDisconnected: isDisconnected,
+                rtt: -1,
+                bytesSent: 0,
+                bytesReceived: 0,
+            };
+
+            if (isDisconnected) {
+                this.socket.emit(RTC.PEER_STATS, peerStats);
+                return;
+            }
+
+            const report = await peerConnection.getStats();            
+
+            const peerData = this.peerConnections.get(remoteId);
+            const oldPeerStats = peerData?.stats;
+
+            report.forEach(s => {
+                if (s.type === 'candidate-pair' && s.state === 'succeeded')
+                    peerStats.rtt = s.currentRoundTripTime * 1000;
+
+                if (s.type === 'data-channel' && s.state === 'open') {
+                    peerStats.bytesSent = s.bytesSent - (oldPeerStats?.bytesSent || 0);
+                    peerStats.bytesReceived = s.bytesReceived - (oldPeerStats?.bytesReceived || 0);
+                }
+                if (s.type === 'remote-candidate') {
+                    const ip = s.ip;
+                    const { version, type } = NetworkUtils.classifyIp(ip);
+                    if (type === 'public') {
+                        if (version === 'IPv4') peerStats.remote_ipv4 = ip;
+                        else peerStats.remote_ipv6 = ip;
+                    }
+                }
+                if (s.type === 'local-candidate') {
+                    const ip = s.ip;
+                    const { version, type } = NetworkUtils.classifyIp(ip);
+                    if (type === 'public') {
+                        if (version === 'IPv4') peerStats.local_ipv4 = ip;
+                        else peerStats.local_ipv6 = ip;
+                    }
+                }
+
+                //console.log(`Peer stats:`, s);
+            });
+            peerData!.stats = peerStats;
+
+            this.socket.emit(RTC.PEER_STATS, peerStats);
+        } catch (error) {
+            console.error(`[WebRTC] Error getting stats for ${remoteId}:`, error);
+        }
     }
 
     private setupDataChannel(dataChannel: RTCDataChannel, remoteId: string) {
@@ -231,7 +299,7 @@ export default class WebRTCSocketController {
                         this.handleFragmentRequest(message, fromClientId);
                         break;
                     case DataChannelMessageType.CANCELED:
-                        
+                        this.handleCancelRequest(message, fromClientId);
                         break;
                     default:
                         console.log(`[WebRTC] Unknown message type: ${message.type}`);
@@ -242,26 +310,211 @@ export default class WebRTCSocketController {
         }
     }
 
-    private handleFragmentRequest(message: RequestNodeMessage, fromClientId: string) {
-        //console.log(`[WebRTC] Fragment request for ${message.fragment_id} from ${fromClientId}`);
-        const fragmentPath = SettingUtils.getFragmentPath(message.fragment_id);
-        if (fragmentPath) {
-            //console.log(`[WebRTC] Would send fragment ${message.fragment_id} from path ${fragmentPath} to ${fromClientId}`);
+    private handleCancelRequest(message: CanceledMessage, fromClientId: string) {
+        console.log(`[WebRTC] Received cancel request for session ${message.session_id} from ${fromClientId}`);
 
+        const peerConnection = this.peerConnections.get(fromClientId);
+        if (peerConnection?.transferSessions) {
+            const session = peerConnection.transferSessions.get(message.session_id);
+            if (session && session.status === 'in-progress') {
+                session.canceled = true;
+                session.status = 'canceled';
+                session.end = new Date();
+
+                this.cleanupTransferSession(peerConnection, message.session_id);
+            }
+        }
+    }
+
+    private async handleFragmentRequest(message: RequestNodeMessage, fromClientId: string) {
+        const fragmentPath = SettingUtils.getFragmentPath(message.fragment_id);
+        if (fragmentPath && fs.existsSync(fragmentPath)) {
             const peerConnection = this.peerConnections.get(fromClientId);
-            if (peerConnection && peerConnection.dataChannel?.readyState === 'open') {
-                peerConnection.transferSessions = new Map<string, TransferSession>();
+            if (peerConnection && peerConnection.dataChannel && peerConnection.dataChannel.readyState === 'open') {
+                const fileSize = fs.statSync(fragmentPath).size;
+
+                // Initialize transfer sessions if not exists
+                if (!peerConnection.transferSessions) {
+                    peerConnection.transferSessions = new Map<string, TransferSession>();
+                }
+
                 const transferSession: TransferSession = {
                     fragmentId: message.fragment_id,
                     start: new Date(),
-                    status: 'in-progress'
+                    status: 'in-progress',
+                    totalBytes: fileSize,
+                    sentBytes: 0
                 };
-                peerConnection.transferSessions.set(message.fragment_id, transferSession);
+                peerConnection.transferSessions.set(message.session_id, transferSession);
 
-                
+                const dataChannel = peerConnection.dataChannel;
+                //console.log(`[WebRTC] Data channel state with ${fromClientId}: ${dataChannel.readyState}`);
+
+                // Check system resources
+                const { available, total } = await si.mem();
+                const memoryPercentage = (available / total) * 100;
+                const highBufferAmount = dataChannel.bufferedAmount > 10 * 1024 * 1024;
+
+                if (memoryPercentage < 15 || highBufferAmount) {
+                    transferSession.status = 'failed';
+                    transferSession.end = new Date();
+                    transferSession.error = 'Node memory low, cannot start transfer';
+                    console.warn(`[WebRTC] Cannot start transfer to ${fromClientId}: low memory (${memoryPercentage.toFixed(1)}%) or high buffered amount (${(dataChannel.bufferedAmount / (1024 * 1024)).toFixed(2)}MB)`);
+
+                    const cancelMessage: CanceledMessage = {
+                        type: DataChannelMessageType.CANCELED,
+                        session_id: message.session_id,
+                        fragment_id: message.fragment_id,
+                        error: 'Node memory low, canceling transfer'
+                    };
+                    this.sendDataToPeer(fromClientId, JSON.stringify(cancelMessage));
+                    return;
+                }
+
+                // Create a read stream with optimized buffer size
+                const fileStream = fs.createReadStream(fragmentPath, {
+                    highWaterMark: CHUNK_SIZE,
+                    autoClose: true
+                });
+                transferSession.fileStream = fileStream;
+
+                // Activity tracker
+                const reportProgress = () => this.updateLastActivity(fromClientId);
+                const reportId = setInterval(reportProgress, 5_000);
+
+                // Pre-allocate buffers for headers to avoid repeated allocations
+                const idBuf = Buffer.from(message.session_id);
+                const headerSize = 2 + idBuf.length;
+
+                // Flow control variables
+                let flowPaused = false;
+                const MAX_BUFFER_THRESHOLD = CHUNK_SIZE * 5;
+                const THROTTLE_CHECK_INTERVAL = 50; // ms
+
+                fileStream.on('data', async (chunk) => {
+                    if (transferSession.canceled) return;
+
+                    // Implement better flow control
+                    if (dataChannel.bufferedAmount > MAX_BUFFER_THRESHOLD) {
+                        if (!flowPaused) {
+                            flowPaused = true;
+                            fileStream.pause();
+                        }
+
+                        // Dynamic timeout based on buffer size
+                        const timeoutDuration = Math.min(
+                            10000, // 10 seconds max
+                            Math.max(1000, dataChannel.bufferedAmount / 1024) // Scale with buffer size
+                        );
+
+                        let startTime = Date.now();
+                        let timedOut = false;
+
+                        const checkTimeout = () => {
+                            const elapsed = Date.now() - startTime;
+                            if (elapsed > timeoutDuration) {
+                                timedOut = true;
+                                clearInterval(reportId);
+                                console.log(`[WebRTC] Transfer throttled too long (${elapsed}ms), aborting session ${message.session_id}`);
+                                if (!transferSession.canceled) {
+                                    transferSession.canceled = true;
+                                    transferSession.status = 'failed';
+                                    transferSession.end = new Date();
+                                    transferSession.error = 'Transfer throttled too long';
+                                    this.cleanupTransferSession(peerConnection, message.session_id);
+                                }
+                                return true;
+                            }
+                            return false;
+                        };
+
+                        // Wait for buffer to drain or timeout
+                        while (dataChannel.bufferedAmount > CHUNK_SIZE && !timedOut) {
+                            if (checkTimeout()) break;
+                            await new Promise(resolve => setTimeout(resolve, THROTTLE_CHECK_INTERVAL));
+                        }
+
+                        if (timedOut) return;
+
+                        flowPaused = false;
+                        fileStream.resume();
+                    }
+
+                    // Optimize buffer handling
+                    const chunkBuffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+                    const isLastChunk = transferSession.sentBytes! + chunkBuffer.length >= fileSize;
+
+                    // Create header
+                    const header = Buffer.alloc(2);
+                    header.writeUInt8(idBuf.length, 0);
+                    header.writeUInt8(isLastChunk ? 1 : 0, 1);
+
+                    // Allocate exact buffer size to avoid unnecessary memory copies
+                    const buffer = Buffer.allocUnsafe(headerSize + chunkBuffer.length);
+                    header.copy(buffer, 0);
+                    idBuf.copy(buffer, 2);
+                    chunkBuffer.copy(buffer, headerSize);
+
+                    // Send the data
+                    dataChannel.send(buffer);
+                    transferSession.sentBytes! += chunkBuffer.length;
+                });
+
+                fileStream.once('end', () => {
+                    clearInterval(reportId);
+                    if (transferSession.canceled) return;
+
+                    transferSession.status = 'completed';
+                    transferSession.end = new Date();
+                    const durationSec = (transferSession.end.getTime() - transferSession.start.getTime()) / 1000;
+                    transferSession.speedBytesPerSec = durationSec > 0 ? (transferSession.totalBytes || 0) / durationSec : 0;
+
+                    const speedKBps = (transferSession.speedBytesPerSec! / 1024).toFixed(2);
+                    const sizeMB = (transferSession.totalBytes! / (1024 * 1024)).toFixed(2);
+
+                    console.log(`[WebRTC] Completed transfer of fragment ${message.fragment_id} (${sizeMB} MB) to ${fromClientId} in ${durationSec.toFixed(2)} sec (${speedKBps} KB/s)`);
+                    this.cleanupTransferSession(peerConnection, message.session_id);
+                });
+
+                fileStream.on('error', (error) => {
+                    clearInterval(reportId);
+                    if (transferSession.canceled) return;
+
+                    transferSession.status = 'failed';
+                    transferSession.end = new Date();
+                    transferSession.error = error.message;
+                    console.error(`[WebRTC] Error reading fragment ${message.fragment_id} for ${fromClientId}:`, error);
+                    this.cleanupTransferSession(peerConnection, message.session_id);
+                });
             }
         } else {
             console.warn(`[WebRTC] Fragment ${message.fragment_id} not found for request from ${fromClientId}`);
+        }
+    }
+
+    private buildHeader(sessionId: string, isLast: boolean) {
+        const idBuf = Buffer.from(sessionId);
+        const header = Buffer.alloc(2);
+        header.writeUInt8(idBuf.length, 0);
+        header.writeUInt8(isLast ? 1 : 0, 1);
+
+        // Create a single buffer with exactly the right size
+        const combined = Buffer.allocUnsafe(2 + idBuf.length);
+        header.copy(combined, 0);
+        idBuf.copy(combined, 2);
+        return combined;
+    }
+
+    private cleanupTransferSession(peerData: PeerConnectionData, sessionId: string) {
+        if (peerData.transferSessions) {
+            const session = peerData.transferSessions.get(sessionId);
+            if (session) {
+                if (session.fileStream) {
+                    session.fileStream.destroy();
+                }
+                peerData.transferSessions.delete(sessionId);
+                console.log(`[WebRTC] Cleaned up transfer session: ${sessionId}`);
+            }
         }
     }
 

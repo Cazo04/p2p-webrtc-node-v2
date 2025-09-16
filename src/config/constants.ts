@@ -41,3 +41,5 @@ export const DEFAULT_SETTING: AppConfig = {
 export const REMOTE_PATH_NAME = "p2p-node-remote";
 
 export const LIMIT_VERIFY_FRAGMENT_PER_EMIT = 5;
+
+export const CHUNK_SIZE = 53 * 1024; // 53KB
