@@ -8,22 +8,22 @@ import { join } from 'path';
 
 export default class DownloadUtils {
     public static async stream(url: string, destination: string, fileName: string, headers?: NodeHttpHeader): Promise<string> {
+        const fullDestination = join(destination, fileName);
+        const fileWriteStream = createWriteStream(fullDestination);
         try {
             const downloadStream = got.stream(url, { headers });
-            const fullDestination = join(destination, fileName);
-            const fileWriteStream = createWriteStream(fullDestination);
 
             await pipeline(downloadStream, fileWriteStream);
             return fullDestination;
         } catch (error) {
             // Clean up - delete the partial file if download fails
             try {
-                await fs.unlink(destination);
+                await fs.unlink(fullDestination);
             } catch {
                 // Ignore errors if deletion fails
             }
 
-            throw new Error(`Failed to download from ${url} to ${destination}: ${(error as Error).message}`);
+            throw new Error(`Failed to download from ${url} to ${fullDestination}: ${(error as Error).message}`);
         }
     }
 
