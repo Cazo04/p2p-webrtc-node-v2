@@ -92,17 +92,21 @@ install_dependencies() {
     log_success "Dependencies installed"
 }
 
-check_ts_node() {
-    log_info "Checking for ts-node..."
+install_ts_node() {
+    log_info "Installing ts-node..."
     
     cd "$SCRIPT_DIR"
     
-    if ! npx ts-node --version &>/dev/null; then
-        log_info "Installing ts-node..."
+    # Check if ts-node is already in package.json
+    if grep -q '"ts-node"' package.json; then
+        log_info "ts-node found in package.json, installing via npm"
+        npm install
+    else
+        log_info "Installing ts-node as dev dependency..."
         npm install --save-dev ts-node
     fi
     
-    log_success "ts-node is available"
+    log_success "ts-node installed"
 }
 
 #############################################################################
@@ -121,7 +125,7 @@ After=network.target
 Type=simple
 User=$SUDO_USER
 WorkingDirectory=$SCRIPT_DIR
-ExecStart=/usr/bin/npx ts-node $ENTRY_FILE
+ExecStart=/bin/bash -c 'cd $SCRIPT_DIR && node_modules/.bin/ts-node $ENTRY_FILE'
 Restart=always
 RestartSec=3
 StandardOutput=journal
@@ -313,11 +317,14 @@ initial_setup() {
     check_root
     log_info "Starting initial setup..."
     
-    # Check and install ts-node
-    check_ts_node
-    
-    # Install dependencies
+    # Install dependencies (includes ts-node)
     install_dependencies
+    
+    # Verify ts-node is installed
+    if [ ! -f "$SCRIPT_DIR/node_modules/.bin/ts-node" ]; then
+        log_info "ts-node not found in node_modules, installing explicitly..."
+        install_ts_node
+    fi
     
     # Copy modules to parent directory
     copy_modules
