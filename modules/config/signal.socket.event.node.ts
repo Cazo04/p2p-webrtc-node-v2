@@ -1,0 +1,8 @@
+export const SIGN_IN = 'node:signin';
+export const SIGN_UP = 'node:signup';
+export const DEVICE_UPDATE = 'node:device:update';
+export const COMMAND = 'node:command';
+export const COMMAND_VERIFY = 'node:command:verify';
+export const HASH_VERIFY = 'node:hash:verify';
+export const HASH_EMPTY = 'node:hash:empty';
+export const CLIENT_REQUEST_STATS = 'node:client:request:stats';

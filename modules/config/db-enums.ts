@@ -1,0 +1,17 @@
+export enum FragmentStatus {
+    PENDING = 'PENDING',
+    COMPLETED = 'COMPLETED',
+    FAILED = 'FAILED'
+}
+
+export enum NodeResourceStatus {
+    CREATED = 'CREATED',
+    ENCRYPTED = 'ENCRYPTED',
+    AVAILABLE = 'AVAILABLE',
+    IN_DOWNLOAD = 'IN_DOWNLOAD',
+    DOWNLOAD_COMPLETE = 'DOWNLOAD_COMPLETE',
+    ONLINE = 'ONLINE',
+    OFFLINE = 'OFFLINE',
+    HASH_MISMATCH = 'HASH_MISMATCH',
+    MISSING = 'MISSING',
+}

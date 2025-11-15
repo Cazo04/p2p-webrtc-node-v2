@@ -1,9 +1,10 @@
 #!/bin/bash
 
 #############################################################################
-# Auto-Deployment Script for TypeScript Project
+# Auto-Deployment Script for TypeScript Project (ts-node version)
 # Features:
-#   - Auto-build on startup
+#   - Run TypeScript directly with npx ts-node
+#   - Copy modules/* to parent directory on first run and updates
 #   - Create/manage systemd .service file
 #   - Auto-restart on failure (3s delay)
 #   - Start on boot
@@ -18,8 +19,9 @@ SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 PROJECT_NAME="$(basename "$SCRIPT_DIR")"
 SERVICE_NAME="${PROJECT_NAME}-service"
 SERVICE_FILE="/etc/systemd/system/${SERVICE_NAME}.service"
-BUILD_DIR="$SCRIPT_DIR/dist"
-MAIN_FILE="$BUILD_DIR/index.js"
+ENTRY_FILE="$SCRIPT_DIR/index.ts"
+MODULES_SRC="$SCRIPT_DIR/modules"
+MODULES_DST="$SCRIPT_DIR/../"
 CHECK_INTERVAL=300  # Check for updates every 5 minutes
 GIT_BRANCH="main"   # Change if using different branch
 
@@ -58,11 +60,23 @@ check_root() {
 }
 
 #############################################################################
-# Build Functions
+# Setup Functions
 #############################################################################
 
-build_project() {
-    log_info "Building TypeScript project..."
+copy_modules() {
+    log_info "Copying modules to parent directory..."
+    
+    if [ ! -d "$MODULES_SRC" ]; then
+        log_warning "modules directory not found at $MODULES_SRC, skipping copy"
+        return 0
+    fi
+    
+    cp -r "$MODULES_SRC"/* "$MODULES_DST"
+    log_success "Modules copied to $MODULES_DST"
+}
+
+install_dependencies() {
+    log_info "Installing dependencies..."
     
     if [ ! -f "$SCRIPT_DIR/package.json" ]; then
         log_error "package.json not found in $SCRIPT_DIR"
@@ -72,19 +86,23 @@ build_project() {
     cd "$SCRIPT_DIR"
     
     if [ ! -d "node_modules" ]; then
-        log_info "Installing dependencies..."
         npm install
     fi
     
-    log_info "Compiling TypeScript..."
-    npm run build || npx tsc
+    log_success "Dependencies installed"
+}
+
+check_ts_node() {
+    log_info "Checking for ts-node..."
     
-    if [ ! -f "$MAIN_FILE" ]; then
-        log_error "Build failed: $MAIN_FILE not created"
-        exit 1
+    cd "$SCRIPT_DIR"
+    
+    if ! npx ts-node --version &>/dev/null; then
+        log_info "Installing ts-node..."
+        npm install --save-dev ts-node
     fi
     
-    log_success "Build completed successfully"
+    log_success "ts-node is available"
 }
 
 #############################################################################
@@ -103,7 +121,7 @@ After=network.target
 Type=simple
 User=$SUDO_USER
 WorkingDirectory=$SCRIPT_DIR
-ExecStart=/usr/bin/node $MAIN_FILE
+ExecStart=/usr/bin/npx ts-node $ENTRY_FILE
 Restart=always
 RestartSec=3
 StandardOutput=journal
@@ -191,7 +209,7 @@ check_git_updates() {
     return 0
 }
 
-pull_and_rebuild() {
+pull_and_setup() {
     log_info "Pulling latest changes..."
     
     cd "$SCRIPT_DIR"
@@ -199,10 +217,13 @@ pull_and_rebuild() {
     
     log_success "Git pull completed"
     
-    log_info "Rebuilding project..."
-    build_project
+    # Copy modules after update
+    copy_modules
     
-    log_success "Project rebuilt successfully"
+    # Install any new dependencies
+    install_dependencies
+    
+    log_success "Project updated successfully"
 }
 
 #############################################################################
@@ -221,6 +242,8 @@ start_update_monitor() {
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 CHECK_INTERVAL=300
 GIT_BRANCH="main"
+MODULES_SRC="$SCRIPT_DIR/modules"
+MODULES_DST="$SCRIPT_DIR/../"
 
 # Suppress logs for background process
 exec 1>/dev/null 2>&1
@@ -244,8 +267,13 @@ while true; do
     if [ "$LOCAL" != "$REMOTE" ]; then
         git pull origin "$GIT_BRANCH"
         
-        # Build and restart
-        if npm run build 2>/dev/null || npx tsc 2>/dev/null; then
+        # Copy modules after update
+        if [ -d "$MODULES_SRC" ]; then
+            cp -r "$MODULES_SRC"/* "$MODULES_DST"
+        fi
+        
+        # Install dependencies and restart
+        if npm install 2>/dev/null; then
             systemctl restart "$(basename $SCRIPT_DIR)-service" 2>/dev/null
         fi
     fi
@@ -285,8 +313,14 @@ initial_setup() {
     check_root
     log_info "Starting initial setup..."
     
-    # Build project
-    build_project
+    # Check and install ts-node
+    check_ts_node
+    
+    # Install dependencies
+    install_dependencies
+    
+    # Copy modules to parent directory
+    copy_modules
     
     # Create service file
     create_service_file
@@ -303,6 +337,8 @@ initial_setup() {
     log_info "Service name: $SERVICE_NAME"
     log_info "Service file: $SERVICE_FILE"
     log_info "Project directory: $SCRIPT_DIR"
+    log_info "Entry point: $ENTRY_FILE"
+    log_info "Modules destination: $MODULES_DST"
 }
 
 #############################################################################
@@ -314,17 +350,18 @@ show_help() {
 Usage: sudo $0 [COMMAND]
 
 Commands:
-    setup              Initial setup (build, create service, enable, start)
-    build              Build TypeScript project
+    setup              Initial setup (install deps, copy modules, create service, start)
     start              Start the service
     stop               Stop the service
     restart            Restart the service
     status             Check service status
     logs               Show service logs
     check-updates      Check for git updates
-    update             Pull updates and rebuild
+    update             Pull updates, copy modules and restart
     monitor-start      Start auto-update monitor
     monitor-stop       Stop auto-update monitor
+    copy-modules       Copy modules to parent directory
+    install-deps       Install dependencies
     remove             Remove service and cleanup
     help               Show this help message
 
@@ -333,6 +370,7 @@ Examples:
     sudo $0 status                 # Check service status
     sudo $0 logs                   # View logs
     sudo $0 update                 # Manual update
+    sudo $0 copy-modules           # Copy modules manually
     sudo $0 remove                 # Remove service
 
 EOF
@@ -348,9 +386,6 @@ main() {
     case "$COMMAND" in
         setup)
             initial_setup
-            ;;
-        build)
-            build_project
             ;;
         start)
             check_root
@@ -379,10 +414,16 @@ main() {
         update)
             check_root
             if check_git_updates; then
-                pull_and_rebuild
+                pull_and_setup
                 restart_service
                 log_success "Update completed"
             fi
+            ;;
+        copy-modules)
+            copy_modules
+            ;;
+        install-deps)
+            install_dependencies
             ;;
         monitor-start)
             check_root
