@@ -6,6 +6,11 @@ export interface NodeHttpHeader extends OutgoingHttpHeaders {
 }
 
 declare namespace Endpoints {
+    export interface RemindDownloadPermissionURLsRequest {
+        Params: {
+            node_id: string;
+        };
+    }
     export interface CreateEncryptReplicaRequest {
         Body: string[];
     }

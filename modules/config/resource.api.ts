@@ -2,8 +2,15 @@ export const CREATE_ENCRYPT_REPLICA = {
     path: '/local/replica/encrypt',
     method: 'POST'
 }
+
+export const REMIND_DOWNLOAD_PERMISSION_URLS = {
+    path: '/local/permissions/remind/:node_id',
+    method: 'POST'
+}
+
 export const DOWNLOAD_ENCRYPTED_REPLICA = {
     path: '/api/replica',
+    public_path: '/request/replica',
     param: '/:id',
     method: 'GET'
 }
