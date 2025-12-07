@@ -42,4 +42,6 @@ export const REMOTE_PATH_NAME = "p2p-node-remote";
 
 export const LIMIT_VERIFY_FRAGMENT_PER_EMIT = 5;
 
-export const CHUNK_SIZE = 53 * 1024; // 53KB
+// Increased chunk size for better throughput (was 53KB, now 64KB)
+// WebRTC data channels can handle larger chunks efficiently
+export const CHUNK_SIZE = 64 * 1024; // 64KB

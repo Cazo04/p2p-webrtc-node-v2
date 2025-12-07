@@ -11,8 +11,8 @@ import { RequestFragmentStatus } from '../../../../config/signal.socket.event.we
 
 export default class FileTransferManager {
     private readonly flowControlConfig: FlowControlConfig = {
-        maxBufferThreshold: CHUNK_SIZE * 5,
-        throttleCheckInterval: 50 // ms
+        maxBufferThreshold: CHUNK_SIZE * 8, // Increased buffer for better throughput
+        throttleCheckInterval: 5 // Reduced from 50ms to 5ms for faster response
     };
 
     private requestReporter: RequestReporter;
@@ -169,43 +169,94 @@ export default class FileTransferManager {
         const reportProgress = () => onActivityUpdate(clientId);
         const reportId = setInterval(reportProgress, 5_000);
 
-        // Pre-allocate buffers for headers (only 1 byte for session id length now, no isLastChunk flag)
+        // Pre-allocate buffers for headers
         const idBuf = Buffer.from(sessionId);
         const headerSize = 1 + idBuf.length;
 
-        // Flow control variables
-        let flowPaused = false;
+        // Set up bufferedAmountLowThreshold for efficient flow control
+        const LOW_WATER_MARK = CHUNK_SIZE * 2;
+        (dataChannel as any).bufferedAmountLowThreshold = LOW_WATER_MARK;
 
-        fileStream.on('data', async (chunk) => {
-            if (transferSession.canceled) return;
+        // Promise-based drain waiting using bufferedamountlow event
+        let drainResolve: (() => void) | null = null;
+        
+        const onBufferedAmountLow = () => {
+            if (drainResolve) {
+                drainResolve();
+                drainResolve = null;
+            }
+        };
+        
+        (dataChannel as any).onbufferedamountlow = onBufferedAmountLow;
 
-            // Handle flow control
-            const shouldContinue = await this.handleFlowControl(
-                dataChannel,
-                fileStream,
-                flowPaused,
-                sessionId,
-                transferSession,
-                peerData,
-                reportId
-            );
+        const waitForDrain = (): Promise<void> => {
+            // If buffer is already low enough, resolve immediately
+            if (dataChannel.bufferedAmount <= LOW_WATER_MARK) {
+                return Promise.resolve();
+            }
+            
+            // Use bufferedamountlow event for efficient waiting
+            return new Promise<void>((resolve) => {
+                drainResolve = resolve;
+                
+                // Fallback timeout in case event doesn't fire (shouldn't happen but safety net)
+                const fallbackCheck = setInterval(() => {
+                    if (dataChannel.bufferedAmount <= LOW_WATER_MARK) {
+                        clearInterval(fallbackCheck);
+                        if (drainResolve) {
+                            drainResolve();
+                            drainResolve = null;
+                        }
+                    }
+                }, this.flowControlConfig.throttleCheckInterval);
+                
+                // Clear interval when resolved
+                const originalResolve = drainResolve;
+                drainResolve = () => {
+                    clearInterval(fallbackCheck);
+                    originalResolve?.();
+                };
+            });
+        };
 
-            if (!shouldContinue) return;
-            flowPaused = dataChannel.bufferedAmount > this.flowControlConfig.maxBufferThreshold;
+        // Process chunks synchronously when possible, async only when needed
+        fileStream.on('data', (chunk) => {
+            if (transferSession.canceled) {
+                fileStream.destroy();
+                return;
+            }
 
-            // Send chunk
-            await this.sendChunk(
-                chunk,
-                dataChannel,
-                sessionId,
-                fileSize,
-                transferSession,
-                idBuf,
-                headerSize
-            );
+            const chunkBuffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+
+            // Create the packet
+            const header = Buffer.alloc(1);
+            header.writeUInt8(idBuf.length, 0);
+            const buffer = Buffer.allocUnsafe(headerSize + chunkBuffer.length);
+            header.copy(buffer, 0);
+            idBuf.copy(buffer, 1);
+            chunkBuffer.copy(buffer, headerSize);
+
+            // Send the data
+            dataChannel.send(buffer);
+            transferSession.sentBytes! += chunkBuffer.length;
+
+            // Check if we need to pause for flow control
+            if (dataChannel.bufferedAmount > this.flowControlConfig.maxBufferThreshold) {
+                fileStream.pause();
+                
+                // Wait for buffer to drain then resume
+                waitForDrain().then(() => {
+                    if (!transferSession.canceled && !fileStream.destroyed) {
+                        fileStream.resume();
+                    }
+                });
+            }
         });
 
         fileStream.once('end', () => {
+            // Clean up event listener
+            (dataChannel as any).onbufferedamountlow = null;
+            
             this.handleTransferComplete(
                 transferSession,
                 fragmentId,
@@ -217,6 +268,9 @@ export default class FileTransferManager {
         });
 
         fileStream.on('error', (error) => {
+            // Clean up event listener
+            (dataChannel as any).onbufferedamountlow = null;
+            
             this.handleTransferError(
                 error,
                 transferSession,
@@ -227,60 +281,6 @@ export default class FileTransferManager {
                 reportId
             );
         });
-    }
-
-    private async handleFlowControl(
-        dataChannel: RTCDataChannel,
-        fileStream: fs.ReadStream,
-        flowPaused: boolean,
-        sessionId: string,
-        transferSession: TransferSession,
-        peerData: PeerConnectionData,
-        reportId: NodeJS.Timeout
-    ): Promise<boolean> {
-        if (dataChannel.bufferedAmount <= this.flowControlConfig.maxBufferThreshold) {
-            return true;
-        }
-
-        if (!flowPaused) {
-            fileStream.pause();
-        }
-
-        // Wait for buffer to drain
-        while (dataChannel.bufferedAmount > CHUNK_SIZE) {
-            await new Promise(resolve => 
-                setTimeout(resolve, this.flowControlConfig.throttleCheckInterval)
-            );
-        }
-
-        fileStream.resume();
-        return true;
-    }
-
-    private async sendChunk(
-        chunk: any,
-        dataChannel: RTCDataChannel,
-        sessionId: string,
-        fileSize: number,
-        transferSession: TransferSession,
-        idBuf: Buffer,
-        headerSize: number
-    ): Promise<void> {
-        const chunkBuffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
-
-        // Create header (only 1 byte for session id length, no isLastChunk flag)
-        const header = Buffer.alloc(1);
-        header.writeUInt8(idBuf.length, 0);
-
-        // Allocate exact buffer size
-        const buffer = Buffer.allocUnsafe(headerSize + chunkBuffer.length);
-        header.copy(buffer, 0);
-        idBuf.copy(buffer, 1);
-        chunkBuffer.copy(buffer, headerSize);
-
-        // Send the data
-        dataChannel.send(buffer);
-        transferSession.sentBytes! += chunkBuffer.length;
     }
 
     private handleTransferComplete(
