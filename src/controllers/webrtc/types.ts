@@ -27,6 +27,4 @@ export interface PeerConnectionData {
 export interface FlowControlConfig {
     maxBufferThreshold: number;
     throttleCheckInterval: number;
-    maxTimeoutDuration: number;
-    minTimeoutDuration: number;
 }

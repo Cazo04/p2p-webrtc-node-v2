@@ -12,9 +12,7 @@ import { RequestFragmentStatus } from '../../../../config/signal.socket.event.we
 export default class FileTransferManager {
     private readonly flowControlConfig: FlowControlConfig = {
         maxBufferThreshold: CHUNK_SIZE * 5,
-        throttleCheckInterval: 50, // ms
-        maxTimeoutDuration: 10000, // 10 seconds max
-        minTimeoutDuration: 1000
+        throttleCheckInterval: 50 // ms
     };
 
     private requestReporter: RequestReporter;
@@ -248,47 +246,12 @@ export default class FileTransferManager {
             fileStream.pause();
         }
 
-        // Dynamic timeout based on buffer size
-        const timeoutDuration = Math.min(
-            this.flowControlConfig.maxTimeoutDuration,
-            Math.max(
-                this.flowControlConfig.minTimeoutDuration,
-                dataChannel.bufferedAmount / 1024
-            )
-        );
-
-        const startTime = Date.now();
-        let timedOut = false;
-
-        const checkTimeout = () => {
-            const elapsed = Date.now() - startTime;
-            if (elapsed > timeoutDuration) {
-                timedOut = true;
-                clearInterval(reportId);
-                console.log(
-                    `[WebRTC] Transfer throttled too long (${elapsed}ms), aborting session ${sessionId}`
-                );
-                if (!transferSession.canceled) {
-                    transferSession.canceled = true;
-                    transferSession.status = 'failed';
-                    transferSession.end = new Date();
-                    transferSession.error = 'Transfer throttled too long';
-                    this.cleanupTransferSession(peerData, sessionId);
-                }
-                return true;
-            }
-            return false;
-        };
-
-        // Wait for buffer to drain or timeout
-        while (dataChannel.bufferedAmount > CHUNK_SIZE && !timedOut) {
-            if (checkTimeout()) break;
+        // Wait for buffer to drain
+        while (dataChannel.bufferedAmount > CHUNK_SIZE) {
             await new Promise(resolve => 
                 setTimeout(resolve, this.flowControlConfig.throttleCheckInterval)
             );
         }
-
-        if (timedOut) return false;
 
         fileStream.resume();
         return true;
