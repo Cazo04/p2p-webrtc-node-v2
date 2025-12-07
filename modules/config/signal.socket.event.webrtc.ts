@@ -6,6 +6,7 @@ export const PEER_STATS = 'webrtc:peer-stats';
 export enum DataChannelMessageType {
   READY_NODE = 'READY_NODE',
   READY_CLIENT = 'READY_CLIENT',
+  TRANSFER_START = 'TRANSFER_START',
   CANCELED = 'CANCELED',
 }
 

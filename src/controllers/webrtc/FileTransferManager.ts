@@ -2,7 +2,7 @@ import { RTCDataChannel } from '@roamhq/wrtc';
 import * as fs from 'fs';
 import * as si from 'systeminformation';
 import { DataChannelMessageType } from '../../../../config/signal.socket.event.webrtc';
-import type { RequestNodeMessage, CanceledMessage } from '../../../../types/signal';
+import type { RequestNodeMessage, CanceledMessage, TransferStartMessage } from '../../../../types/signal';
 import { CHUNK_SIZE } from '../../config/constants';
 import SettingUtils from '../../utils/setting';
 import type { TransferSession, PeerConnectionData, FlowControlConfig } from './types';
@@ -151,6 +151,16 @@ export default class FileTransferManager {
         peerData: PeerConnectionData,
         onActivityUpdate: (clientId: string) => void
     ): Promise<void> {
+        // Send transfer start message with total size first
+        const transferStartMessage: TransferStartMessage = {
+            type: DataChannelMessageType.TRANSFER_START,
+            session_id: sessionId,
+            fragment_id: fragmentId,
+            total_size: fileSize
+        };
+        dataChannel.send(JSON.stringify(transferStartMessage));
+        console.log(`[WebRTC] Sent TRANSFER_START for fragment ${fragmentId} (${fileSize} bytes) to ${clientId}`);
+
         const fileStream = fs.createReadStream(fragmentPath, {
             highWaterMark: CHUNK_SIZE,
             autoClose: true
@@ -161,9 +171,9 @@ export default class FileTransferManager {
         const reportProgress = () => onActivityUpdate(clientId);
         const reportId = setInterval(reportProgress, 5_000);
 
-        // Pre-allocate buffers for headers
+        // Pre-allocate buffers for headers (only 1 byte for session id length now, no isLastChunk flag)
         const idBuf = Buffer.from(sessionId);
-        const headerSize = 2 + idBuf.length;
+        const headerSize = 1 + idBuf.length;
 
         // Flow control variables
         let flowPaused = false;
@@ -294,17 +304,15 @@ export default class FileTransferManager {
         headerSize: number
     ): Promise<void> {
         const chunkBuffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
-        const isLastChunk = transferSession.sentBytes! + chunkBuffer.length >= fileSize;
 
-        // Create header
-        const header = Buffer.alloc(2);
+        // Create header (only 1 byte for session id length, no isLastChunk flag)
+        const header = Buffer.alloc(1);
         header.writeUInt8(idBuf.length, 0);
-        header.writeUInt8(isLastChunk ? 1 : 0, 1);
 
         // Allocate exact buffer size
         const buffer = Buffer.allocUnsafe(headerSize + chunkBuffer.length);
         header.copy(buffer, 0);
-        idBuf.copy(buffer, 2);
+        idBuf.copy(buffer, 1);
         chunkBuffer.copy(buffer, headerSize);
 
         // Send the data

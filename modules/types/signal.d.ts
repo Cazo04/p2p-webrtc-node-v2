@@ -106,6 +106,13 @@ interface RequestNodeMessage {
     session_id: string;
 }
 
+interface TransferStartMessage {
+    type: DataChannelMessageType.TRANSFER_START;
+    session_id: string;
+    fragment_id: string;
+    total_size: number;
+}
+
 interface CanceledMessage {
     type: DataChannelMessageType.CANCELED;
     fragment_id: string;
