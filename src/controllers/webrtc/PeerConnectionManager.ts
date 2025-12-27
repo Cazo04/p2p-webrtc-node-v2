@@ -72,7 +72,7 @@ export default class PeerConnectionManager {
                     remoteId,
                     peerData.stats
                 );
-                peerData.stats = stats;
+                peerData.stats = stats ?? undefined;
             },
             1000
         );
