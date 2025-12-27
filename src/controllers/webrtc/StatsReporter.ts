@@ -16,7 +16,7 @@ export default class StatsReporter {
         remoteId: string,
         oldPeerStats?: PeerStats,
         isDisconnected = false
-    ): Promise<PeerStats> {
+    ): Promise<PeerStats | null> {
         try {
             let peerStats: PeerStats = {
                 target: remoteId,
@@ -70,7 +70,7 @@ export default class StatsReporter {
             return peerStats;
         } catch (error) {
             console.error(`[WebRTC] Error getting stats for ${remoteId}:`, error);
-            throw error;
+            return null;
         }
     }
 }

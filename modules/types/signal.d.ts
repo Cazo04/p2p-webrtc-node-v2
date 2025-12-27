@@ -98,6 +98,7 @@ interface SessionRequest {
     chunks: Uint8Array<ArrayBuffer>[];
     resolve: (buffer: ArrayBuffer) => void;
     reject: (reason?: any) => void;
+    updateTimeoutForSize?: (sizeBytes: number) => void;
 }
 
 interface RequestNodeMessage {
