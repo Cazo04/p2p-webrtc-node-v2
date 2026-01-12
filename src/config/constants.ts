@@ -6,7 +6,7 @@ export const SETTING_PATH: string = path.join(ROOT_PATH, 'node-settings.json');
 
 export const DEFAULT_SETTING: AppConfig = {
     signaling_servers: [
-        //"https://p2p.cazo-dev.net",
+        "https://p2p.cazo-dev.net",
         "http://localhost:3000",
         "http://192.168.5.20:3000"
     ],
