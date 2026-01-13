@@ -37,19 +37,23 @@ export default class ShutdownHandler {
         console.log('[Shutdown] Deactivating device updates...');
         this.signalSocketController.deactivateDeviceUpdates();
 
-        // Step 2: Force close all active WebRTC peer connections
-        console.log('[Shutdown] Force closing all WebRTC connections...');
+        // Step 2: Force close all active WebRTC peer connections immediately
+        const connectedPeers = this.webrtcSocketController.getConnectedPeers();
+        console.log(`[Shutdown] Force closing ${connectedPeers.length} WebRTC connection(s)...`);
         this.webrtcSocketController.cleanup();
+        console.log('[Shutdown] All WebRTC connections closed');
 
-        // Step 3: Enter sleep state for n seconds
+        // Step 3: Disconnect WebSocket from signal server immediately
+        console.log('[Shutdown] Disconnecting WebSocket from signal server...');
+        this.socket.disconnect();
+        console.log('[Shutdown] WebSocket disconnected');
+
+        // Step 4: Enter sleep state for n seconds
         console.log(`[Shutdown] Entering sleep state for ${delaySeconds} seconds...`);
         await this.sleep(delaySeconds * 1000);
 
-        // Step 4: Disconnect and exit
-        console.log('[Shutdown] Sleep period complete. Disconnecting from signal server...');
-        this.socket.disconnect();
-
-        console.log('[Shutdown] Exiting process...');
+        // Step 5: Exit process
+        console.log('[Shutdown] Sleep period complete. Exiting process...');
         process.exit(0);
     }
 

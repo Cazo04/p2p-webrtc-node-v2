@@ -91,6 +91,13 @@ export default class WebRTCSocketController {
             console.warn(`Received answer without source`);
             return;
         }
+
+        // Ignore during shutdown
+        if (this.shutdownHandler?.isInShutdownMode()) {
+            console.log(`[WebRTC] Ignoring answer from ${source}: node is shutting down`);
+            return;
+        }
+
         console.log(`[WebRTC] Received answer from client: ${source}`);
 
         if (!this.peerConnectionManager.hasPeerConnection(source)) {
@@ -114,6 +121,13 @@ export default class WebRTCSocketController {
             console.warn(`Received ICE candidate without source`);
             return;
         }
+
+        // Ignore during shutdown
+        if (this.shutdownHandler?.isInShutdownMode()) {
+            console.log(`[WebRTC] Ignoring ICE candidate from ${source}: node is shutting down`);
+            return;
+        }
+
         console.log(`[WebRTC] Received ICE candidate from client: ${source}`);
 
         if (!this.peerConnectionManager.hasPeerConnection(source)) {
