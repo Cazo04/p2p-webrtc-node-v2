@@ -27,7 +27,7 @@ export const GET_RANKED_NODES = {
 }
 
 export const REQUEST_ALTERNATIVE_NODE = {
-    path: '/api/resources/alternative-node',
+    path: '/api/fallback',
     param: '/:fragment_id',
     method: 'POST'
 }

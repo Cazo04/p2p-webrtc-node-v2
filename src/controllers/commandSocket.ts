@@ -1,18 +1,35 @@
 import { Socket } from 'socket.io-client';
-import { COMMAND, COMMAND_VERIFY } from '../../../config/signal.socket.event.node';
-import { NodeCommand, NodeCommandVerify, NodeResourceHash } from '../../../types/signal';
+import { COMMAND, COMMAND_VERIFY, SHUTDOWN } from '../../../config/signal.socket.event.node';
+import { NodeCommand, NodeCommandVerify, NodeResourceHash, NodeShutdownCommand } from '../../../types/signal';
 import { NodeHttpHeader } from '../../../types/resource';
 import SettingUtils from '../utils/setting';
 import FileUtils from '../utils/file';
 import PathUtils from '../utils/path';
 import DownloadUtils from '../utils/download';
 
+type OnShutdownCallback = (delaySeconds: number, reason?: string) => void;
+
 export default class CommandSocketController {
     private socket: Socket;
+    private onShutdownCallback?: OnShutdownCallback;
 
     constructor(socket: Socket) {
         this.socket = socket;
         this.handleCommand();
+        this.handleShutdown();
+    }
+
+    public setOnShutdown(callback: OnShutdownCallback): void {
+        this.onShutdownCallback = callback;
+    }
+
+    private handleShutdown(): void {
+        this.socket.on(SHUTDOWN, (data: NodeShutdownCommand) => {
+            console.log(`[Command] Received shutdown command: delay=${data.delay_seconds}s, reason=${data.reason || 'Not specified'}`);
+            if (this.onShutdownCallback) {
+                this.onShutdownCallback(data.delay_seconds, data.reason);
+            }
+        });
     }
 
     private handleCommand(): void {

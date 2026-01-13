@@ -3,6 +3,7 @@ import SettingUtils from '../utils/setting';
 import SignalSocketController from './signalSocket';
 import CommandSocketController from './commandSocket';
 import WebRTCSocketController from './webRTCSocket';
+import ShutdownHandler from './shutdownHandler';
 
 export default class SocketController {
     private socket!: Socket;
@@ -11,6 +12,7 @@ export default class SocketController {
     private signalSocketController!: SignalSocketController;
     private commandSocketController!: CommandSocketController;
     private webrtcSocketController!: WebRTCSocketController;
+    private shutdownHandler!: ShutdownHandler;
 
     constructor() {
         
@@ -30,10 +32,25 @@ export default class SocketController {
         this.signalSocketController = new SignalSocketController(this.socket);
         this.commandSocketController = new CommandSocketController(this.socket);
         this.webrtcSocketController = new WebRTCSocketController(this.socket);
+        this.shutdownHandler = new ShutdownHandler(
+            this.socket,
+            this.signalSocketController,
+            this.webrtcSocketController
+        );
+
+        // Set up shutdown callback
+        this.commandSocketController.setOnShutdown(this.handleShutdownCommand);
+        // Pass shutdown handler reference to WebRTC controller
+        this.webrtcSocketController.setShutdownHandler(this.shutdownHandler);
+
         this.serverIndex = 0;
         this.maxServerIndex = servers.length - 1;
         this.socket.on('connect_error', this.handleConnectError);
         this.socket.on('connect', this.handleConnect);
+    }
+
+    private handleShutdownCommand = async (delaySeconds: number, reason?: string): Promise<void> => {
+        await this.shutdownHandler.initiateGracefulShutdown(delaySeconds, reason);
     }
 
     private handleConnect = async (): Promise<void> => {

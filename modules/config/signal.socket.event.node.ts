@@ -6,3 +6,5 @@ export const COMMAND_VERIFY = 'node:command:verify';
 export const HASH_VERIFY = 'node:hash:verify';
 export const HASH_EMPTY = 'node:hash:empty';
 export const CLIENT_REQUEST_STATS = 'node:client:request:stats';
+export const SHUTDOWN = 'node:shutdown';
+export const SHUTDOWN_ACK = 'node:shutdown:ack';

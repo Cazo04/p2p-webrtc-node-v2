@@ -6,6 +6,7 @@ import DataChannelHandler from './webrtc/DataChannelHandler';
 import FileTransferManager from './webrtc/FileTransferManager';
 import StatsReporter from './webrtc/StatsReporter';
 import RequestReporter from './webrtc/RequestReporter';
+import ShutdownHandler from './shutdownHandler';
 
 export default class WebRTCSocketController {
     private socket: Socket;
@@ -14,6 +15,7 @@ export default class WebRTCSocketController {
     private fileTransferManager: FileTransferManager;
     private statsReporter: StatsReporter;
     private requestReporter: RequestReporter;
+    private shutdownHandler?: ShutdownHandler;
 
     constructor(socket: Socket) {
         this.socket = socket;
@@ -41,12 +43,23 @@ export default class WebRTCSocketController {
         this.socket.on(RTC.ICE_CANDIDATE, this.handleIceCandidate.bind(this));
     }
 
+    public setShutdownHandler(handler: ShutdownHandler): void {
+        this.shutdownHandler = handler;
+    }
+
     private async handleOffer(data: WebRTCOffer) {
         const { source, offer } = data;
         if (!source) {
             console.warn(`Received offer without source`);
             return;
         }
+
+        // Reject new connections during shutdown
+        if (this.shutdownHandler?.isInShutdownMode()) {
+            console.log(`[WebRTC] Rejecting offer from ${source}: node is shutting down`);
+            return;
+        }
+
         console.log(`[WebRTC] Received offer from client: ${source}`);
 
         try {

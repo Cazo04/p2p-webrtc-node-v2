@@ -35,6 +35,16 @@ export interface NodeResourcesVerify {
     resources: NodeResourceHash[];
 }
 
+export interface NodeShutdownCommand {
+    delay_seconds: number;
+    reason?: string;
+}
+
+export interface NodeShutdownAck {
+    node_id: string;
+    received_at: Date;
+}
+
 export interface AckFromServer<T = unknown> {
     success: boolean;
     error?: string;
