@@ -45,6 +45,26 @@ export interface NodeShutdownAck {
     received_at: Date;
 }
 
+export interface IprouteCommand {
+    action: 'apply' | 'reset';
+    delay_ms?: number;         // Network delay in milliseconds
+    loss_percent?: number;     // Packet loss percentage
+    duplicate_percent?: number; // Packet duplicate percentage
+    corrupt_percent?: number;  // Packet corruption percentage
+    duration_seconds?: number; // Duration before auto-reset
+}
+
+export interface IprouteCommandAck {
+    node_id: string;
+    success: boolean;
+    action: 'apply' | 'reset';
+    interface_name?: string;
+    stdout?: string;
+    stderr?: string;
+    error?: string;
+    received_at: Date;
+}
+
 export interface AckFromServer<T = unknown> {
     success: boolean;
     error?: string;

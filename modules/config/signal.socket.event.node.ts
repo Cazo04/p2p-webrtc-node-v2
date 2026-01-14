@@ -8,3 +8,5 @@ export const HASH_EMPTY = 'node:hash:empty';
 export const CLIENT_REQUEST_STATS = 'node:client:request:stats';
 export const SHUTDOWN = 'node:shutdown';
 export const SHUTDOWN_ACK = 'node:shutdown:ack';
+export const IPROUTE_COMMAND = 'node:iproute:command';
+export const IPROUTE_COMMAND_ACK = 'node:iproute:command:ack';
