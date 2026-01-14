@@ -237,6 +237,10 @@ export default class CommandSocketController {
             netemParams.push(`corrupt ${command.corrupt_percent}%`);
         }
 
+        if (command.bandwidth_kbps !== undefined && command.bandwidth_kbps > 0) {
+            netemParams.push(`rate ${command.bandwidth_kbps}kbit`);
+        }
+
         if (netemParams.length === 0) {
             console.log('[Iproute] No network conditions specified, skipping apply');
             return;

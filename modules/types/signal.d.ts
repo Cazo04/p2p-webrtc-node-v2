@@ -51,6 +51,7 @@ export interface IprouteCommand {
     loss_percent?: number;     // Packet loss percentage
     duplicate_percent?: number; // Packet duplicate percentage
     corrupt_percent?: number;  // Packet corruption percentage
+    bandwidth_kbps?: number;   // Bandwidth limit in kbps (upload)
     duration_seconds?: number; // Duration before auto-reset
 }
 
